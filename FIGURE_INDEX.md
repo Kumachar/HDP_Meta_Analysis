@@ -7,7 +7,7 @@ Paths are written relative to your chosen results directory:
 - `<RESULTS_ROOT>` is the folder passed as `--output-base` (simulation) or `--output-base` (real data).
 - `<FAMILY>` is a model family folder such as `linear`, `poisson`, `logistic` (simulation) or whatever you pass as `--family` (real data).
 
-**One line per figure folder type:**
+**figure folder type:**
 
 <RESULTS_ROOT>/<FAMILY>/figures/beta_plots — posterior β density plots (per (source,outcome)) and G0 plots written during runs  
 <RESULTS_ROOT>/<FAMILY>/figures/trace_plots — (real data) trace plots for hyperparameters and a subset of β_{s,o}  

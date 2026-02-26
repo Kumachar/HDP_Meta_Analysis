@@ -1,15 +1,15 @@
 # HDP Meta-analysis with Profile-Likelihood Curves
 
-This repository implements a **hierarchical meta-analysis** model for outcome-specific effect estimates using:
+This repository implements a hierarchical meta-analysis model for outcome-specific effect estimates using:
 
-- **Profile likelihood curves** as the per-outcome “data likelihood” for an effect parameter,
-- **Hierarchical Dirichlet-process (HDP)** structure to share information across **sources** while allowing source-specific heterogeneity across **outcomes**, and
-- **Hamiltonian Monte Carlo (HMC)** (via **NumPyro NUTS**) for posterior inference.
+- Profile likelihood curves as the per-outcome “data likelihood” for an effect parameter,
+- Hierarchical Dirichlet-process (HDP) structure to share information across sources while allowing source-specific heterogeneity across outcomes, and
+- Hamiltonian Monte Carlo (HMC) (via NumPyro NUTS) for posterior inference.
 
 The codebase supports two workflows:
 
-1. **Simulated experiments**: simulate outcome-level profile likelihood curves from linear / logistic / Poisson data, fit the HDP model, and evaluate performance against known truth.
-2. **Real-data experiments**: run the same HDP model on *provided* profile-likelihood curves (long-format CSV) and produce diagnostic + exploratory plots (no truth required).
+1. Simulated experiments: simulate outcome-level profile likelihood curves from linear / logistic / Poisson data, fit the HDP model, and evaluate performance against known truth.
+2. Real-data experiments: run the same HDP model on *provided* profile-likelihood curves (long-format CSV) and produce diagnostic + exploratory plots (no truth required).
 
 ---
 
@@ -34,61 +34,67 @@ The codebase supports two workflows:
 
 You have:
 
-- **Sources** \(s = 1,\dots,S\) (e.g., studies, sites, cohorts),
-- **Outcomes** \(o = 1,\dots,O_s\) per source,
-- For each \((s,o)\), a **profile log-likelihood curve** \(\ell_{s,o}(\beta)\) evaluated on a grid of \(\beta\) values.
+- Sources $s = 1,\dots,S$ (e.g., studies, sites, cohorts),
+- Outcomes $o = 1,\dots,O_s$ per source,
+- For each $(s,o)$, a profile log-likelihood curve $\ell_{s,o}(\beta)$ evaluated on a grid of $\beta$ values.
 
-The goal is to infer the outcome-level effects \(\beta_{s,o}\) and summarize source-level patterns, while borrowing strength **across outcomes** and **across sources**.
+The goal is to infer the outcome-level effects $\beta_{s,o}$ and summarize source-level patterns, while borrowing strength across outcomes and across sources.
 
 ### Profile likelihood as the likelihood term
 
-Instead of modeling raw data at inference time, the HDP model consumes the **curve** \(\ell_{s,o}(\beta)\):
+Instead of modeling raw data at inference time, the HDP model consumes the curve $\ell_{s,o}(\beta)$:
 
 - In simulation (`simulation.py`), curves are computed directly (and also via fitting one GLM per source for point estimates).
 - In real data (`main_realdata.py`), curves are read from long-format CSV with columns:
   `source, outcome, point, value`, where `value` is the profile log-likelihood at `point`.
 
-In the Bayesian model (`models.py` / `models_vectorized.py`), each latent \(\beta_{s,o}\) contributes:
+In the Bayesian model (`models.py` / `models_vectorized.py`), each latent $\beta_{s,o}$ contributes:
 
-\[
+
+$$
 \log p(\text{curve}_{s,o} \mid \beta_{s,o}) \;\propto\; \ell_{s,o}(\beta_{s,o})
-\]
+$$
 
-Operationally, the code **linearly interpolates** \(\ell_{s,o}(\beta)\) on the provided grid and adds it to the joint log density via `numpyro.factor(...)`.
 
-> Assumption: profile log-likelihoods are only defined up to an additive constant; this is fine because additive constants cancel in Bayesian inference as long as they do not depend on \(\beta\).
+Operationally, the code linearly interpolates $\ell_{s,o}(\beta)$ on the provided grid and adds it to the joint log density via `numpyro.factor(...)`.
+
+> Assumption: profile log-likelihoods are only defined up to an additive constant; this is fine because additive constants cancel in Bayesian inference as long as they do not depend on $\beta$.
 
 ### Hierarchical Dirichlet-process (finite truncation)
 
-The repository uses an HDP-like hierarchy with a **finite truncation** of size `K`:
+The repository uses an HDP-like hierarchy with a finite truncation of size `K`:
 
-- Global stick-breaking weights \(\beta = (\beta_1,\dots,\beta_K)\) represent the base measure mixing weights.
-- For each source \(s\), source-specific weights \(\pi_s\) are drawn around \(\beta\):
+- Global stick-breaking weights $\beta = (\beta_1,\dots,\beta_K)$ represent the base measure mixing weights.
+- For each source $s$, source-specific weights $\pi_s$ are drawn around $\beta$:
 
-\[
+
+$$
 \pi_s \sim \text{Dirichlet}(\alpha_0 \, \beta)
-\]
+$$
 
-- Each outcome-level effect is drawn from a **source-specific mixture of Normals**:
 
-\[
+- Each outcome-level effect is drawn from a source-specific mixture of Normals:
+
+
+$$
 z_{s,o} \sim \text{Categorical}(\pi_s), \quad
 \beta_{s,o} \sim \mathcal{N}(\mu_{z_{s,o}}, \sigma_{z_{s,o}}^2)
-\]
+$$
+
 
 This structure pools information:
 
-- **Across outcomes within a source** via \(\pi_s\),
-- **Across sources** via the shared global \(\beta\) and shared component parameters \((\mu_k, \sigma_k)\).
+- Across outcomes within a source via $\pi_s$,
+- Across sources via the shared global $\beta$ and shared component parameters $(\mu_k, \sigma_k)$.
 
 Key hyperparameters include:
-- `alpha0` (controls how concentrated each \(\pi_s\) is around the global weights),
-- `gamma` (stick-breaking concentration for global \(\beta\)),
+- `alpha0` (controls how concentrated each $\pi_s$ is around the global weights),
+- `gamma` (stick-breaking concentration for global $\beta$),
 - priors for component means `mu[k]` and scales `sigma[k]`.
 
 ### HMC / NUTS posterior inference
 
-Posterior inference is performed using **NumPyro NUTS**:
+Posterior inference is performed using NumPyro NUTS:
 
 - Simulation runner: `main.py run-hdp`
 - Real-data runner: `main_realdata.py run-hdp`
@@ -149,26 +155,26 @@ For `--output-base <OUTPUT_BASE>` and `--family <FAMILY>` (default `realdata`, b
 
 ## Codebase structure
 
-Below is a file-by-file map of **every `.py` file** in the provided project snapshot.
+Below is a file-by-file map of every `.py` file in the provided project snapshot.
 
-> “Experiment type” is labeled as **Simulated**, **Real-data**, or **Shared** (used by both).
+> “Experiment type” is labeled as Simulated, Real-data, or Shared (used by both).
 
 | File | What it does | Experiment type | Where it fits in the pipeline |
 |---|---|---:|---|
-| `main.py` | CLI entrypoint for **simulated** HDP runs. Simulates profile-likelihood curves, runs NUTS, saves posteriors (`beta_<s>_<o>.npz`), computes `g0_components.npz`, writes per-rep + family summaries, and triggers some per-rep plots. | Simulated | **Primary simulation runner** (per family × rep). Produces the on-disk artifacts used by all downstream plotting/summary scripts. |
-| `simulation.py` | Simulation of per-(source,outcome) **profile log-likelihood curves** for `linear`, `logistic`, and `poisson` families. Also returns truth (mixture weights and β values) and source-level GLM estimates. | Simulated | Called by `main.py` to create synthetic profile-likelihood inputs and truth used for evaluation. |
-| `main_realdata.py` | Optimized real-data runner: loads long-format profile likelihood curves from CSV(s), runs NUTS, and writes a suite of exploratory/diagnostic figures **without truth**. Avoids ArviZ full expansion to reduce memory. | Real-data | **Primary real-data runner**. Produces `beta_<s>_<o>.npz` and real-data figure folders under `<output_base>/<family>/`. |
+| `main.py` | CLI entrypoint for simulated HDP runs. Simulates profile-likelihood curves, runs NUTS, saves posteriors (`beta_<s>_<o>.npz`), computes `g0_components.npz`, writes per-rep + family summaries, and triggers some per-rep plots. | Simulated | Primary simulation runner (per family × rep). Produces the on-disk artifacts used by all downstream plotting/summary scripts. |
+| `simulation.py` | Simulation of per-(source,outcome) profile log-likelihood curves for `linear`, `logistic`, and `poisson` families. Also returns truth (mixture weights and β values) and source-level GLM estimates. | Simulated | Called by `main.py` to create synthetic profile-likelihood inputs and truth used for evaluation. |
+| `main_realdata.py` | Optimized real-data runner: loads long-format profile likelihood curves from CSV(s), runs NUTS, and writes a suite of exploratory/diagnostic figures without truth. Avoids ArviZ full expansion to reduce memory. | Real-data | Primary real-data runner. Produces `beta_<s>_<o>.npz` and real-data figure folders under `<output_base>/<family>/`. |
 | `models.py` | Non-vectorized NumPyro HDP model. Uses per-(s,o) interpolation of profile likelihood curves and explicit loops. | Shared | The core probabilistic model (fallback when not using vectorized model). |
-| `models_vectorized.py` | Vectorized NumPyro HDP model. Expects packed arrays (`x_padded`, `ll_padded`, `lengths`) and evaluates the profile-likelihood factors via JAX vectorization. Can optionally export per-(s,o) deterministic sites. | Shared | **Recommended** model for speed. Used by `main.py` and `main_realdata.py` when `--use-vectorized-model` is enabled. |
-| `utils.py` | Shared utilities: saving/loading beta posterior “archives” (`.npz`/`.npy`), KDE/hist plotting, G0 component extraction + plotting, true-mixture calculations, KL computations, and a few helper summaries. | Shared | Plumbing for **I/O**, **derived quantities**, and **per-rep plots** used throughout. |
+| `models_vectorized.py` | Vectorized NumPyro HDP model. Expects packed arrays (`x_padded`, `ll_padded`, `lengths`) and evaluates the profile-likelihood factors via JAX vectorization. Can optionally export per-(s,o) deterministic sites. | Shared | Recommended model for speed. Used by `main.py` and `main_realdata.py` when `--use-vectorized-model` is enabled. |
+| `utils.py` | Shared utilities: saving/loading beta posterior “archives” (`.npz`/`.npy`), KDE/hist plotting, G0 component extraction + plotting, true-mixture calculations, KL computations, and a few helper summaries. | Shared | Plumbing for I/O, derived quantities, and per-rep plots used throughout. |
 | `plot_results.py` | Higher-level plotting utilities for simulation results: summary plots across reps, G0 trajectory plots, “true vs posterior” source density comparisons, and combined G0/β visualizations. | Simulated (post-processing) | Called by `summarize_results.py` (and imported by `main.py`) to generate family- and root-level summary figures. |
-| `summarize_results.py` | Aggregates per-rep summary CSVs into family-level `beta_summary_stats.csv` (optionally preferring reconstructed CSVs), and generates summary figures via `plot_results.generate_summary_plots`. | Simulated (post-processing) | After running many reps, run this to build **family-level CSVs** and **root summary figures**. |
+| `summarize_results.py` | Aggregates per-rep summary CSVs into family-level `beta_summary_stats.csv` (optionally preferring reconstructed CSVs), and generates summary figures via `plot_results.generate_summary_plots`. | Simulated (post-processing) | After running many reps, run this to build family-level CSVs and root summary figures. |
 | `plot_outcome_coverage.py` | Builds outcome-level coverage plots across outcomes using aggregated CSVs. | Simulated (post-processing) | Requires per-outcome coverage rows in the input CSVs (see “Notes and sharp edges”). Writes `summary_figs_outcome_cov/`. |
 | `plot_ci_truth.py` | Summarizes posterior CIs vs truth for β_{s,o}: CI lengths, truth distributions, and optionally forest-style plots per source. Primarily reads `beta_<s>_<o>.npz`. | Simulated (post-processing) | Used via direct CLI or via `plot_ci_truth_per_source.sbatch` to generate `summary_figs_ci/` outputs. |
-| `plot_source_density_coverage.py` | For each rep and source: compares posterior **source density** (from β samples) to the **true** source mixture density; writes “coverage band” figures and a root-level coverage barplot. | Simulated (post-processing) | Uses `truth_source_mixtures.npz`, `g0_components.npz`, and `beta_<s>_<o>.npz`. Writes `figures/source_density_coverage/` and `summary_figs/` artifacts. |
+| `plot_source_density_coverage.py` | For each rep and source: compares posterior source density (from β samples) to the true source mixture density; writes “coverage band” figures and a root-level coverage barplot. | Simulated (post-processing) | Uses `truth_source_mixtures.npz`, `g0_components.npz`, and `beta_<s>_<o>.npz`. Writes `figures/source_density_coverage/` and `summary_figs/` artifacts. |
 | `explore_profile_mle_kde.py` | Extracts profile-likelihood MLEs (argmax grid of `loglik`) from `beta_<s>_<o>.npz` and plots per-source KDE/hist grids. Optionally overlays “truth” from `prior_samples` if present. | Shared (exploration) | Can be used on either simulation or real-data outputs because both store `grid` and `loglik` inside `beta_<s>_<o>.npz`. Writes `figures/profile_explore/`. |
 | `merge_beta_summaries.py` | Merges per-rep `beta_summary_stats.csv` into a family-level CSV and optionally an all-families CSV. | Shared (post-processing) | Standalone utility for aggregation; overlaps with what `summarize_results.py` does. |
-| `reconstruct_source_mixture.py` | Given global mixture params (`g0_components.npz`) and per-outcome β summaries (`beta_<s>_<o>.npz`), reconstructs an estimated source mixture weight vector \(\hat\pi_s\). | Shared (post-processing) | Reconstruction tool: can run on a single source/rep to get \(\hat\pi_s\) and a reconstructed mixture plot. |
+| `reconstruct_source_mixture.py` | Given global mixture params (`g0_components.npz`) and per-outcome β summaries (`beta_<s>_<o>.npz`), reconstructs an estimated source mixture weight vector `pi_hat_s`. | Shared (post-processing) | Reconstruction tool: can run on a single source/rep to get `pi_hat_s` and a reconstructed mixture plot. |
 | `reconstruct_and_update.py` | Batch reconstruction across reps and sources. Produces `beta_summary_stats_recon.csv` per rep by merging reconstruction fields into the existing per-rep summary. | Shared (post-processing) | Used when you want per-source reconstructed weights embedded in summary tables. |
 | `regen_trace_plots.py` | Regenerates trace plots for β from saved `beta_<s>_<o>.npz` samples, writing to `figures/trace/rep*/`. | Shared (post-processing) | Useful when trace plots were not saved during sampling, but NPZ posterior samples exist. |
 | `regen_prev_summary.py` | Rebuilds an older “previous-style” summary table by combining per-source summary with additional reconstructed CI/coverage fields derived from saved NPZs. | Simulated (post-processing) | Intended to reconstruct richer summaries from on-disk artifacts without rerunning MCMC. |
@@ -181,33 +187,41 @@ Below is a file-by-file map of **every `.py` file** in the provided project snap
 
 ### Environment setup
 
-No `environment.yml` is included in the provided snapshot. The minimal dependencies below are inferred from imports across the `.py` files:
+### Environment setup
 
-- Python 3.x
-- `numpy`, `pandas`, `scipy`
-- `matplotlib` (and optionally `seaborn` for one diagnostic script)
-- `statsmodels` (simulation only)
-- `jax` + `numpyro` (HMC/NUTS inference)
-- `arviz`, `xarray` (simulation runner uses ArviZ to build `InferenceData`)
+This repo includes a pinned conda environment file, HDP_env.yml.
 
-A typical conda setup (edit versions to match your system) looks like:
+Create the environment:
 
 ```bash
-conda create -n pymc_env python=3.11 -y
+conda env create -f HDP_env.yml
 conda activate pymc_env
-
-# core scientific stack
-conda install -c conda-forge numpy pandas scipy matplotlib arviz xarray statsmodels -y
-
-# HMC backend
-pip install "jax[cpu]" numpyro
-
-# optional (used in some scripts)
-conda install -c conda-forge seaborn -y
 ```
 
-Cluster scripts in this repo assume the environment name is **`pymc_env`** and often activate it as:
-`$HOME/.conda/envs/pymc_env`.
+If you already created it and want to update to match the file:
+
+```bash
+conda env update -f HDP_env.yml --prune
+conda activate pymc_env
+```
+
+Key dependencies (from HDP_env.yml):
+
+- python==3.12.11
+- numpy==2.3.0
+- jax==0.7.1, jaxlib==0.7.1
+- numpyro==0.19.0
+- pandas==2.3.0
+- scipy==1.15.3
+- matplotlib==3.10.3
+- arviz==0.21.0
+- xarray==2025.6.0, xarray-einstats==0.9.0
+- statsmodels==0.14.4
+- seaborn==0.13.2 (only used by a small subset of diagnostic scripts)
+- pyyaml==6.0.2
+- tqdm==4.67.1
+
+Note: HDP_env.yml also includes optional CUDA-related pip wheels (nvidia-*) for GPU JAX setups. If you are running CPU-only, you can remove those nvidia-* lines and keep jax[cpu] or the default CPU wheels.
 
 ### Run simulated experiments
 
@@ -229,7 +243,7 @@ python -u main.py run-hdp \
 Key options (simulation):
 
 - `--model-type {linear,poisson,logistic}` controls both the simulator and the output family folder.
-- `--O-sim` + `--outcome-cap` let you **simulate more outcomes than you analyze** (see `run_all.sh`).
+- `--O-sim` + `--outcome-cap` let you simulate more outcomes than you analyze (see `run_all.sh`).
 - `--use-vectorized-model` uses `models_vectorized.py` (recommended).
 - `--parallel-chains` + `--n-threads` configure CPU parallelism (see cluster scripts for safe defaults).
 
@@ -238,11 +252,11 @@ Key options (simulation):
 These are pre-written job scripts that call `main.py`:
 
 - `run_reps.sh`  
-  SLURM array over **(family × rep blocks)**. Runs `main.py run-hdp` for `linear`, `poisson`, `logistic` in blocks of 10 reps per family.  
+  SLURM array over (family × rep blocks). Runs `main.py run-hdp` for `linear`, `poisson`, `logistic` in blocks of 10 reps per family.  
   Output base is set inside the script (`OUTPUT_BASE="results_sample_2025-10-20"`).
 
 - `run_all.sh`  
-  Runs **logistic** with two configurations per rep (50-outcome full analysis, and 20-outcome truncation).  
+  Runs logistic with two configurations per rep (50-outcome full analysis, and 20-outcome truncation).  
   Writes to:
   - `results_sample_2025-12-04_50outcomes`
   - `results_sample_2025-12-04_20outcomes`
@@ -270,7 +284,7 @@ sbatch run_all.sh
 
 ### Run real-data experiments
 
-Real-data runs use `main_realdata.py run-hdp`. The expected input is **long-format CSV** with columns:
+Real-data runs use `main_realdata.py run-hdp`. The expected input is long-format CSV with columns:
 
 - `source` (any label; internally remapped to 1..S),
 - `outcome` (any label; internally remapped per source),
@@ -475,25 +489,25 @@ so that family-level summaries are built from the reconstructed per-rep CSVs.
 
 ## Notes and known sharp edges
 
-- **`models_vectorized_fast` is optional and not included in this snapshot.**  
+- `models_vectorized_fast` is optional and not included in this snapshot.  
   `main_realdata.py` tries to import it, but falls back to `models_vectorized.py` automatically.
 
-- **Some downstream scripts require per-outcome coverage rows in summary CSVs.**  
+- Some downstream scripts require per-outcome coverage rows in summary CSVs.  
   `main.py` currently writes *per-source* summaries (`beta_summary_stats.csv`) and stores per-outcome truth inside `beta_<s>_<o>.npz` as `prior_samples`.  
   Scripts like `plot_outcome_coverage.py` and the Poisson CI-failure diagnostics expect per-outcome coverage columns in a CSV. If those columns are absent, you may need to:
   - generate per-outcome diagnostics directly from NPZ (e.g., `plot_ci_truth.py`), or
   - use `regen_prev_summary.py` to rebuild richer “previous-style” tables from NPZ artifacts.
 
-- **Cluster wrapper argument drift:**  
-  `plot_source_density_coverage.sh` contains optional arguments (`--kde-bw`, `--style`) that are **not** accepted by `plot_source_density_coverage.py` in this snapshot. If you enable those options, SLURM will error with “unrecognized arguments”.
+- Cluster wrapper argument drift:  
+  `plot_source_density_coverage.sh` contains optional arguments (`--kde-bw`, `--style`) that are not accepted by `plot_source_density_coverage.py` in this snapshot. If you enable those options, SLURM will error with “unrecognized arguments”.
 
-- **Threading matters on CPU clusters.**  
+- Threading matters on CPU clusters.  
   The SLURM scripts intentionally cap BLAS thread pools (`OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, etc.) because NumPyro parallel chains already consume CPU cores.
 
-- **Grid sizes can be large.**  
-  `main.py` simulates profile likelihoods on a 20,000-point grid over \([-10,10]\), which can be heavy. The vectorized model is recommended for these settings.
+- Grid sizes can be large.  
+  `main.py` simulates profile likelihoods on a 20,000-point grid over $[-10,10]$, which can be heavy. The vectorized model is recommended for these settings.
 
 ---
 
-If you want a quick map of result figure folders, see **`FIGURE_INDEX.md`**.  
-For details on the saved simulated artifacts (`.npz`/`.csv`) and how to load them, see **`SIM_DATA_GUIDE.md`**.
+If you want a quick map of result figure folders, see `FIGURE_INDEX.md`.  
+For details on the saved simulated artifacts (`.npz`/`.csv`) and how to load them, see `SIM_DATA_GUIDE.md`.
